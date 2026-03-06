@@ -1,0 +1,6 @@
+../Core/Src/i2c_slave.c:38:6:i2c_slave_send_reply.part.0	16	static
+../Core/Src/i2c_slave.c:29:6:i2c_slave_init	8	static
+../Core/Src/i2c_slave.c:38:6:i2c_slave_send_reply	8	static
+../Core/Src/i2c_slave.c:58:6:HAL_I2C_SlaveRxCpltCallback	24	static
+../Core/Src/i2c_slave.c:101:6:HAL_I2C_SlaveTxCpltCallback	0	static
+../Core/Src/i2c_slave.c:108:6:HAL_I2C_ErrorCallback	8	static

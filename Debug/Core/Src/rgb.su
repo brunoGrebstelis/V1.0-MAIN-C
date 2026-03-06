@@ -1,0 +1,4 @@
+../Core/Src/rgb.c:24:6:rgb_init	16	static
+../Core/Src/rgb.c:34:6:rgb_set	0	static
+../Core/Src/rgb.c:41:6:rgb_tim_period_elapsed_callback	16	static
+../Core/Src/rgb.c:55:6:rgb_demo_task	16	static

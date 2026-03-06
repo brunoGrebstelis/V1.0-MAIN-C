@@ -1,0 +1,5 @@
+../Core/Src/terminal.c:13:6:terminal_print.part.0	1
+../Core/Src/terminal.c:8:6:terminal_init	1
+../Core/Src/terminal.c:13:6:terminal_print	2
+../Core/Src/terminal.c:19:6:terminal_println	1
+../Core/Src/terminal.c:25:6:terminal_printf	1

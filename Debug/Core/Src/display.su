@@ -1,0 +1,7 @@
+../Core/Src/display.c:92:20:delay_us	16	static,ignoring_inline_asm
+../Core/Src/display.c:86:20:clear_digits	8	static
+../Core/Src/display.c:79:20:clear_segments	8	static
+../Core/Src/display.c:131:6:display_init	8	static
+../Core/Src/display.c:139:6:display_set_number	0	static
+../Core/Src/display.c:145:6:display_blank	8	static
+../Core/Src/display.c:155:6:display_task	16	static

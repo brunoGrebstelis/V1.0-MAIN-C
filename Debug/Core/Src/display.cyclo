@@ -1,0 +1,7 @@
+../Core/Src/display.c:92:20:delay_us	2
+../Core/Src/display.c:86:20:clear_digits	1
+../Core/Src/display.c:79:20:clear_segments	1
+../Core/Src/display.c:131:6:display_init	1
+../Core/Src/display.c:139:6:display_set_number	2
+../Core/Src/display.c:145:6:display_blank	2
+../Core/Src/display.c:155:6:display_task	23
