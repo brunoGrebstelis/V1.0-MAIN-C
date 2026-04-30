@@ -1,0 +1,5 @@
+../Core/Src/nv_store.c:30:17:crc16_ccitt.constprop	4
+../Core/Src/nv_store.c:139:6:nv_store_init	1
+../Core/Src/nv_store.c:145:6:nv_store_load	7
+../Core/Src/nv_store.c:181:6:nv_store_request_save	2
+../Core/Src/nv_store.c:194:6:nv_store_task	9

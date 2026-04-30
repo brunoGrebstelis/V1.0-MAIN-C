@@ -1,6 +1,4 @@
 #include "protocol.h"
-#include "display.h"
-#include "rgb.h"
 #include "temp.h"
 #include "terminal.h"
 #include "app.h"
@@ -19,14 +17,13 @@ void protocol_on_frame(uint8_t cmd, const uint8_t *payload, uint8_t len)
             if (len == 2) {
                 uint16_t price = (uint16_t)((payload[0] << 8) | payload[1]);
                 app_set_price(price);
-                display_set_number(price);
                 send_u16(price); // ACK by echo
             }
             break;
 
         case CMD_SET_RGB:
             if (len == 3) {
-                rgb_set(payload[0], payload[1], payload[2]);
+                app_set_rgb(payload[0], payload[1], payload[2]);
             }
             break;
 

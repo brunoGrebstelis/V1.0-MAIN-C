@@ -1,11 +1,8 @@
 #include "i2c_slave.h"
 
 #include "main.h"
-#include "display.h"
-#include "rgb.h"
 #include "temp.h"
 #include "app.h"
-#include "lighting_mode.h"
 
 // ===== Fixed 4-byte request frame from master: [CMD, B1, B2, B3] =====
 #define CMD_SET_PRICE  0x01U
@@ -87,7 +84,6 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         {
             uint16_t price = (uint16_t)((rx4[1] << 8) | rx4[2]);
             app_set_price(price);
-            display_set_number(price);
 
             // "all data" currently uses current price as 16-bit payload
             send_reply_frame(REPLY_ALL_DATA, app_get_price());
@@ -96,8 +92,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
         case CMD_SET_RGB:
         {
-            rgb_set(rx4[1], rx4[2], rx4[3]);
-            lighting_mode_set_base_color(rx4[1], rx4[2], rx4[3]);
+            app_set_rgb(rx4[1], rx4[2], rx4[3]);
 
             // acknowledge with current "all data" payload
             send_reply_frame(REPLY_ALL_DATA, app_get_price());
@@ -110,7 +105,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
             // 0   -> keep current color (no change)
             // 255 -> green for 500 ms, then restore previous/base color
             // else-> run selected light show mode
-            run_light_show(rx4[1]);
+            app_set_light_mode(rx4[1]);
 
             // acknowledge with current "all data" payload
             send_reply_frame(REPLY_ALL_DATA, app_get_price());

@@ -1,4 +1,8 @@
-../Core/Src/app.c:13:10:app_get_price	1
-../Core/Src/app.c:14:6:app_set_price	1
-../Core/Src/app.c:16:6:app_init	1
-../Core/Src/app.c:31:6:app_loop	2
+../Core/Src/app.c:23:13:app_request_persist	1
+../Core/Src/app.c:36:9:app_get_locker_id	1
+../Core/Src/app.c:37:10:app_get_price	1
+../Core/Src/app.c:39:6:app_set_price	2
+../Core/Src/app.c:49:6:app_set_rgb	4
+../Core/Src/app.c:62:6:app_set_light_mode	3
+../Core/Src/app.c:73:6:app_init	2
+../Core/Src/app.c:110:6:app_loop	2

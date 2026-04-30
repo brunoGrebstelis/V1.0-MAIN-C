@@ -1,0 +1,9 @@
+../Core/Src/lighting_mode.c:103:13:apply_base_color	1
+../Core/Src/lighting_mode.c:108:13:stop_show_and_restore	1
+../Core/Src/lighting_mode.c:68:20:locker_palette_color	4
+../Core/Src/lighting_mode.c:53:20:shift_color	7
+../Core/Src/lighting_mode.c:134:6:lighting_mode_init	1
+../Core/Src/lighting_mode.c:143:6:lighting_mode_set_base_color	2
+../Core/Src/lighting_mode.c:154:6:lighting_mode_set	3
+../Core/Src/lighting_mode.c:187:6:run_light_show	1
+../Core/Src/lighting_mode.c:192:6:lighting_mode_task	24
