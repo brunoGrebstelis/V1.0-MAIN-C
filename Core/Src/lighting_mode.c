@@ -34,11 +34,27 @@ static rgb_color_t s_palette[6] = {
     {180,   0, 255}  // violet
 };
 
+#define PSY_FADE_STEP_MS   20U
+#define PSY_FADE_STEPS     90U
+
 static uint8_t clamp_u8(int16_t v)
 {
     if (v < 0) return 0;
     if (v > 255) return 255;
     return (uint8_t)v;
+}
+
+static uint8_t lerp_u8(uint8_t a, uint8_t b, uint8_t step, uint8_t steps_total)
+{
+    if (steps_total == 0U) {
+        return b;
+    }
+
+    const int16_t delta = (int16_t)b - (int16_t)a;
+    const int32_t v = (int32_t)a +
+                      (((int32_t)delta * (int32_t)step + (int32_t)(steps_total / 2U)) /
+                       (int32_t)steps_total);
+    return clamp_u8((int16_t)v);
 }
 
 static rgb_color_t scale_color(rgb_color_t c, uint8_t scale)
@@ -232,14 +248,28 @@ void lighting_mode_task(void)
             s_state.step = (uint8_t)((s_state.step + 1U) % 6U);
         } break;
 
-        case 3: // yellow <-> red gradient (locker-adjusted)
+        case 3: // psychedelic smooth fade through warm theme (locker-adjusted)
         {
-            if ((now - s_state.last_tick) < 10U) return;
+            if ((now - s_state.last_tick) < PSY_FADE_STEP_MS) return;
             s_state.last_tick = now;
 
-            rgb_color_t c = locker_theme_color(s_state.step);
+            const uint8_t from_idx = (uint8_t)(s_state.phase % 5U);
+            const uint8_t to_idx = (uint8_t)((from_idx + 1U) % 5U);
+            const rgb_color_t from = locker_theme_color(from_idx);
+            const rgb_color_t to = locker_theme_color(to_idx);
+
+            rgb_color_t c;
+            c.r = lerp_u8(from.r, to.r, s_state.step, PSY_FADE_STEPS);
+            c.g = lerp_u8(from.g, to.g, s_state.step, PSY_FADE_STEPS);
+            c.b = lerp_u8(from.b, to.b, s_state.step, PSY_FADE_STEPS);
             rgb_set(c.r, c.g, c.b);
-            s_state.step = (uint8_t)((s_state.step + 1U) % 5U);
+
+            if (s_state.step >= PSY_FADE_STEPS) {
+                s_state.step = 0U;
+                s_state.phase = (uint8_t)((s_state.phase + 1U) % 5U);
+            } else {
+                s_state.step++;
+            }
         } break;
 
         case 4: // welcome style white->green->white, timings slightly id dependent
