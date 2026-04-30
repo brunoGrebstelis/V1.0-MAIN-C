@@ -5,12 +5,15 @@
 #include "rgb.h"
 #include "temp.h"
 #include "app.h"
+#include "lighting_mode.h"
 
 // ===== Fixed 4-byte request frame from master: [CMD, B1, B2, B3] =====
 #define CMD_SET_PRICE  0x01U
 #define CMD_SET_RGB    0x02U
 #define CMD_GET_TEMP   0x03U
-#define CMD_GET_ALL    0x04U
+#define CMD_SET_LIGHT_MODE 0x04U
+
+#define CMD_GET_ALL    0x05U
 
 // ===== Fixed 4-byte reply frame to master: [CMD, LOCKER_ID, D1, D2] =====
 #define REPLY_TEMP      0x01U
@@ -94,6 +97,20 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         case CMD_SET_RGB:
         {
             rgb_set(rx4[1], rx4[2], rx4[3]);
+            lighting_mode_set_base_color(rx4[1], rx4[2], rx4[3]);
+
+            // acknowledge with current "all data" payload
+            send_reply_frame(REPLY_ALL_DATA, app_get_price());
+
+        } break;
+
+        case CMD_SET_LIGHT_MODE:
+        {
+            // Lighting mode command payload in B1
+            // 0   -> keep current color (no change)
+            // 255 -> green for 500 ms, then restore previous/base color
+            // else-> run selected light show mode
+            run_light_show(rx4[1]);
 
             // acknowledge with current "all data" payload
             send_reply_frame(REPLY_ALL_DATA, app_get_price());

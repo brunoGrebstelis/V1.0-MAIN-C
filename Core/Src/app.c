@@ -4,6 +4,7 @@
 #include "i2c_slave.h"
 #include "terminal.h"
 #include "temp.h"
+#include "lighting_mode.h"
 
 #include "main.h"   // CubeMX handles live here
 
@@ -19,6 +20,7 @@ void app_init(void)
 {
     display_init();
     rgb_init();
+    lighting_mode_init();
     terminal_init();
 
     // Start I2C slave reception (command-based protocol)
@@ -40,6 +42,7 @@ void app_init(void)
     // Example startup state
     display_set_number(g_price);
     rgb_set(150, 150, 150);
+    lighting_mode_set_base_color(150, 150, 150);
     terminal_println("APP init OK");
 }
 
@@ -56,6 +59,9 @@ void app_loop(void)
         display_set_number(p);
     }
 
-    // 3) Optional: remove demo in production
+    // 3) Run non-blocking lighting effects state machine
+    lighting_mode_task();
+
+    // 4) Optional: remove demo in production
     //rgb_demo_task();
 }
