@@ -24,6 +24,19 @@ void app_init(void)
     // Start I2C slave reception (command-based protocol)
     i2c_slave_init();
 
+    // Startup announce frame: [CMD=0x02, LOCKER_ID, DATA_H, DATA_L]
+    // Delay = 50 ms * locker ID (decimal value)
+    HAL_Delay(50U * (uint32_t)g_locker_id);
+    {
+        uint8_t startup_frame[4] = {
+            0x02U,
+            g_locker_id,
+            (uint8_t)(g_price >> 8),
+            (uint8_t)(g_price & 0xFF)
+        };
+        i2c_slave_send_reply(startup_frame, sizeof(startup_frame));
+    }
+
     // Example startup state
     display_set_number(g_price);
     rgb_set(150, 150, 150);
