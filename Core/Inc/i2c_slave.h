@@ -8,4 +8,7 @@ void i2c_slave_init(void);
 // Transmit reply bytes (driver pads/truncates to fixed 4-byte reply frame)
 void i2c_slave_send_reply(const uint8_t *data, uint8_t len);
 
+// Periodic debug print helper (optional runtime diagnostics)
+void i2c_slave_debug_task(void);
+
 #endif

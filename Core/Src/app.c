@@ -112,6 +112,9 @@ void app_loop(void)
     // 1) Keep display refreshing (non-blocking multiplex)
     display_task();
 
+    // Debug: periodic I2C counters over terminal
+    i2c_slave_debug_task();
+
     // 2) Update display value if changed
     static uint16_t last_price = 0xFFFF;
     uint16_t p = g_price;

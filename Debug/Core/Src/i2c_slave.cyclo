@@ -1,6 +1,8 @@
-../Core/Src/i2c_slave.c:34:6:i2c_slave_init	1
-../Core/Src/i2c_slave.c:43:6:i2c_slave_send_reply	6
-../Core/Src/i2c_slave.c:61:13:send_reply_frame	1
-../Core/Src/i2c_slave.c:75:6:HAL_I2C_SlaveRxCpltCallback	7
-../Core/Src/i2c_slave.c:140:6:HAL_I2C_SlaveTxCpltCallback	2
-../Core/Src/i2c_slave.c:147:6:HAL_I2C_ErrorCallback	2
+../Core/Src/i2c_slave.c:41:13:arm_rx	2
+../Core/Src/i2c_slave.c:52:6:i2c_slave_init	1
+../Core/Src/i2c_slave.c:63:6:i2c_slave_send_reply	7
+../Core/Src/i2c_slave.c:110:13:send_reply_frame	1
+../Core/Src/i2c_slave.c:90:6:i2c_slave_debug_task	2
+../Core/Src/i2c_slave.c:124:6:HAL_I2C_SlaveRxCpltCallback	7
+../Core/Src/i2c_slave.c:190:6:HAL_I2C_SlaveTxCpltCallback	3
+../Core/Src/i2c_slave.c:203:6:HAL_I2C_ErrorCallback	2

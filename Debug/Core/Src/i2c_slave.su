@@ -1,6 +1,8 @@
-../Core/Src/i2c_slave.c:34:6:i2c_slave_init	8	static
-../Core/Src/i2c_slave.c:43:6:i2c_slave_send_reply	16	static
-../Core/Src/i2c_slave.c:61:13:send_reply_frame	24	static
-../Core/Src/i2c_slave.c:75:6:HAL_I2C_SlaveRxCpltCallback	16	static
-../Core/Src/i2c_slave.c:140:6:HAL_I2C_SlaveTxCpltCallback	0	static
-../Core/Src/i2c_slave.c:147:6:HAL_I2C_ErrorCallback	8	static
+../Core/Src/i2c_slave.c:41:13:arm_rx	8	static
+../Core/Src/i2c_slave.c:52:6:i2c_slave_init	8	static
+../Core/Src/i2c_slave.c:63:6:i2c_slave_send_reply	16	static
+../Core/Src/i2c_slave.c:110:13:send_reply_frame	24	static
+../Core/Src/i2c_slave.c:90:6:i2c_slave_debug_task	72	static
+../Core/Src/i2c_slave.c:124:6:HAL_I2C_SlaveRxCpltCallback	8	static
+../Core/Src/i2c_slave.c:190:6:HAL_I2C_SlaveTxCpltCallback	8	static
+../Core/Src/i2c_slave.c:203:6:HAL_I2C_ErrorCallback	8	static

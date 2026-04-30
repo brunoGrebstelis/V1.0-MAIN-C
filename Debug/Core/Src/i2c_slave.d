@@ -36,7 +36,7 @@ Core/Src/i2c_slave.o: ../Core/Src/i2c_slave.c ../Core/Inc/i2c_slave.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_tim_ex.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_uart.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_uart_ex.h \
- ../Core/Inc/temp.h ../Core/Inc/app.h
+ ../Core/Inc/temp.h ../Core/Inc/app.h ../Core/Inc/terminal.h
 ../Core/Inc/i2c_slave.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal.h:
@@ -78,3 +78,4 @@ Core/Src/i2c_slave.o: ../Core/Src/i2c_slave.c ../Core/Inc/i2c_slave.h \
 ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_uart_ex.h:
 ../Core/Inc/temp.h:
 ../Core/Inc/app.h:
+../Core/Inc/terminal.h:
