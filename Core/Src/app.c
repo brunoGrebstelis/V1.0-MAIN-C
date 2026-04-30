@@ -8,8 +8,10 @@
 #include "main.h"   // CubeMX handles live here
 
 // Shared state updated by protocol
+static const uint8_t g_locker_id = 5;
 static volatile uint16_t g_price = 2026;
 
+uint8_t app_get_locker_id(void) { return g_locker_id; }
 uint16_t app_get_price(void) { return g_price; }
 void app_set_price(uint16_t p) { g_price = p; }
 

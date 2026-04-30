@@ -6,10 +6,15 @@
 #include "temp.h"
 #include "app.h"
 
-// ===== Fixed 4-byte frame: [CMD, B1, B2, B3] =====
-#define CMD_SET_PRICE  0x01
-#define CMD_SET_RGB    0x02
-#define CMD_GET_TEMP   0x03
+// ===== Fixed 4-byte request frame from master: [CMD, B1, B2, B3] =====
+#define CMD_SET_PRICE  0x01U
+#define CMD_SET_RGB    0x02U
+#define CMD_GET_TEMP   0x03U
+#define CMD_GET_ALL    0x04U
+
+// ===== Fixed 4-byte reply frame to master: [CMD, LOCKER_ID, D1, D2] =====
+#define REPLY_TEMP      0x01U
+#define REPLY_ALL_DATA  0x02U
 
 static uint8_t rx4[4];
 
@@ -33,23 +38,35 @@ void i2c_slave_init(void)
     arm_rx(&hi2c1);
 }
 
-// ========= This is the missing function you asked for =========
-// Non-blocking. If a TX is already running, it will be ignored (or you can overwrite policy later).
+// Non-blocking. If a TX is already running, new reply is ignored.
+// Reply is always fixed 4 bytes: [CMD, LOCKER_ID, D1, D2]
 void i2c_slave_send_reply(const uint8_t *data, uint8_t len)
 {
     if (!data || len == 0) return;
 
-    if (len > sizeof(tx_buf)) len = sizeof(tx_buf);
-
     // If currently transmitting, don't start another (simple policy)
     if (tx_busy) return;
 
-    for (uint8_t i = 0; i < len; i++) tx_buf[i] = data[i];
-    tx_len  = len;
+    for (uint8_t i = 0; i < 4; i++) {
+        tx_buf[i] = (i < len) ? data[i] : 0x00;
+    }
+
+    tx_len  = 4;
     tx_busy = 1;
 
     // Master must issue a READ to clock these bytes out.
     HAL_I2C_Slave_Transmit_IT(&hi2c1, tx_buf, tx_len);
+}
+
+static void send_reply_frame(uint8_t reply_cmd, uint16_t data16)
+{
+    uint8_t out[4] = {
+        reply_cmd,
+        app_get_locker_id(),
+        (uint8_t)(data16 >> 8),
+        (uint8_t)(data16 & 0xFF)
+    };
+    i2c_slave_send_reply(out, sizeof(out));
 }
 
 // ================= HAL callbacks =================
@@ -69,27 +86,37 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
             app_set_price(price);
             display_set_number(price);
 
+            // "all data" currently uses current price as 16-bit payload
+            send_reply_frame(REPLY_ALL_DATA, app_get_price());
+
         } break;
 
         case CMD_SET_RGB:
         {
             rgb_set(rx4[1], rx4[2], rx4[3]);
 
+            // acknowledge with current "all data" payload
+            send_reply_frame(REPLY_ALL_DATA, app_get_price());
+
         } break;
 
         case CMD_GET_TEMP:
         {
-            // Reply with temperature * 100 as int16 (2 bytes)
+            // Reply with temperature * 100 in D1:D2 (int16, big-endian)
             float t = temp_read_c();
             int16_t t100 = (int16_t)(t * 100.0f);
-            uint8_t out[2] = { (uint8_t)(t100 >> 8), (uint8_t)(t100 & 0xFF) };
-            i2c_slave_send_reply(out, 2);
+            send_reply_frame(REPLY_TEMP, (uint16_t)t100);
+        } break;
+
+        case CMD_GET_ALL:
+        {
+            send_reply_frame(REPLY_ALL_DATA, app_get_price());
         } break;
 
         default:
         {
-            uint8_t err = 0xEE;
-            i2c_slave_send_reply(&err, 1);
+            // fixed 4-byte reply, marker 0xFFFF means unsupported request
+            send_reply_frame(REPLY_ALL_DATA, 0xFFFFU);
         } break;
     }
 

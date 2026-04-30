@@ -6,6 +6,7 @@
 void app_init(void);
 void app_loop(void);
 
+uint8_t app_get_locker_id(void);
 void app_set_price(uint16_t p);
 uint16_t app_get_price(void);
 
