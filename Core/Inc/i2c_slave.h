@@ -11,4 +11,12 @@ void i2c_slave_send_reply(const uint8_t *data, uint8_t len);
 // Periodic debug print helper (optional runtime diagnostics)
 void i2c_slave_debug_task(void);
 
+// Periodic reliability monitor:
+// - re-arms RX callback if it got lost
+// - force-recovers I2C peripheral after prolonged inactivity in busy/error state
+void i2c_slave_watchdog_task(void);
+
+// Retrieve and clear accumulated I2C error flags (bitmask of HAL_I2C_ERROR_* values)
+uint32_t i2c_slave_take_error_flags(void);
+
 #endif

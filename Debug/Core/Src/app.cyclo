@@ -5,4 +5,4 @@
 ../Core/Src/app.c:49:6:app_set_rgb	4
 ../Core/Src/app.c:62:6:app_set_light_mode	3
 ../Core/Src/app.c:73:6:app_init	2
-../Core/Src/app.c:110:6:app_loop	2
+../Core/Src/app.c:110:6:app_loop	3

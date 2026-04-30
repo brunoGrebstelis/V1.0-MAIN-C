@@ -126,6 +126,17 @@ void app_loop(void)
     // 4) Persist pending state updates (outside IRQ context)
     nv_store_task();
 
-    // 5) Optional: remove demo in production
+    // 5) Keep I2C slave resilient to malformed traffic / bus glitches
+    i2c_slave_watchdog_task();
+
+    // 6) Centralized I2C error handling/reporting (non-IRQ context)
+    {
+        const uint32_t i2c_err = i2c_slave_take_error_flags();
+        if (i2c_err != 0U) {
+            terminal_printf("I2C error flags: 0x%08lX\r\n", (unsigned long)i2c_err);
+        }
+    }
+
+    // 7) Optional: remove demo in production
     //rgb_demo_task();
 }
