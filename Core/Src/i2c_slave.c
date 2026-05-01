@@ -48,6 +48,24 @@ static volatile uint32_t dbg_tx_start_ok = 0;
 static volatile uint32_t dbg_tx_start_busy = 0;
 static volatile uint8_t  dbg_last_cmd = 0;
 static volatile uint32_t dbg_recover = 0;
+static volatile uint8_t  dbg_last_rx_b0 = 0;
+static volatile uint8_t  dbg_last_rx_b1 = 0;
+static volatile uint8_t  dbg_last_rx_b2 = 0;
+static volatile uint8_t  dbg_last_rx_b3 = 0;
+static volatile uint8_t  dbg_last_action = 0;
+static volatile uint8_t  dbg_last_reply_cmd = 0;
+static volatile uint16_t dbg_last_reply_data = 0;
+static volatile uint8_t  dbg_last_reply_valid = 0;
+static volatile uint32_t dbg_last_hal_error = 0;
+static volatile uint32_t dbg_last_isr = 0;
+
+#define DBG_ACT_NONE            0U
+#define DBG_ACT_SET_PRICE       1U
+#define DBG_ACT_SET_RGB         2U
+#define DBG_ACT_SET_LIGHT_MODE  3U
+#define DBG_ACT_GET_TEMP        4U
+#define DBG_ACT_GET_ALL         5U
+#define DBG_ACT_UNKNOWN         6U
 
 #define I2C_RECOVER_COOLDOWN_MS      20U
 #define I2C_STUCK_TIMEOUT_MS         40U
@@ -197,12 +215,20 @@ void i2c_slave_send_reply(const uint8_t *data, uint8_t len)
 
 void i2c_slave_debug_task(void)
 {
-    static uint32_t last_ms = 0;
-    uint32_t now = HAL_GetTick();
-    if ((now - last_ms) < 1000U) return;
-    last_ms = now;
+    static uint32_t last_rx_seen = 0;
+    static uint32_t last_err_seen = 0;
 
-    terminal_printf("I2C dbg rx=%lu tx=%lu err=%lu arm_ok=%lu arm_busy=%lu tx_ok=%lu tx_busy=%lu last_cmd=0x%02X rx_armed=%u tx_busy=%u\r\n",
+    // Print only when new RX message arrived or new I2C error occurred
+    if (dbg_rx_cplt == last_rx_seen && dbg_err_cplt == last_err_seen) {
+        return;
+    }
+
+    last_rx_seen = dbg_rx_cplt;
+    last_err_seen = dbg_err_cplt;
+
+    uint32_t now = HAL_GetTick();
+
+    terminal_printf("I2C dbg rx=%lu tx=%lu err=%lu arm_ok=%lu arm_busy=%lu tx_ok=%lu tx_busy=%lu last_cmd=0x%02X frame=[%02X %02X %02X %02X] act=%u reply_valid=%u reply=[%02X %02X %02X] rx_armed=%u tx_busy=%u\r\n",
                     (unsigned long)dbg_rx_cplt,
                     (unsigned long)dbg_tx_cplt,
                     (unsigned long)dbg_err_cplt,
@@ -211,14 +237,25 @@ void i2c_slave_debug_task(void)
                     (unsigned long)dbg_tx_start_ok,
                     (unsigned long)dbg_tx_start_busy,
                     (unsigned int)dbg_last_cmd,
+                    (unsigned int)dbg_last_rx_b0,
+                    (unsigned int)dbg_last_rx_b1,
+                    (unsigned int)dbg_last_rx_b2,
+                    (unsigned int)dbg_last_rx_b3,
+                    (unsigned int)dbg_last_action,
+                    (unsigned int)dbg_last_reply_valid,
+                    (unsigned int)dbg_last_reply_cmd,
+                    (unsigned int)(dbg_last_reply_data >> 8),
+                    (unsigned int)(dbg_last_reply_data & 0xFF),
                     (unsigned int)rx_armed,
                     (unsigned int)tx_busy);
 
-    terminal_printf("I2C state=0x%02X err=0x%08lX recov=%lu lastAct=%lu ms\r\n",
+    terminal_printf("I2C state=0x%02X err=0x%08lX recov=%lu lastAct=%lu ms last_hal_err=0x%08lX isr=0x%08lX\r\n",
                     (unsigned int)hi2c1.State,
                     (unsigned long)i2c_error_flags,
                     (unsigned long)dbg_recover,
-                    (unsigned long)(now - i2c_last_activity_ms));
+                    (unsigned long)(now - i2c_last_activity_ms),
+                    (unsigned long)dbg_last_hal_error,
+                    (unsigned long)dbg_last_isr);
 }
 
 void i2c_slave_watchdog_task(void)
@@ -240,6 +277,10 @@ uint32_t i2c_slave_take_error_flags(void)
 
 static void send_reply_frame(uint8_t reply_cmd, uint16_t data16)
 {
+    dbg_last_reply_cmd = reply_cmd;
+    dbg_last_reply_data = data16;
+    dbg_last_reply_valid = 1U;
+
     uint8_t out[4] = {
         reply_cmd,
         app_get_locker_id(),
@@ -267,11 +308,18 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
     uint8_t cmd = rx4[0];
     dbg_last_cmd = cmd;
+    dbg_last_rx_b0 = rx4[0];
+    dbg_last_rx_b1 = rx4[1];
+    dbg_last_rx_b2 = rx4[2];
+    dbg_last_rx_b3 = rx4[3];
+    dbg_last_reply_valid = 0U;
+    dbg_last_action = DBG_ACT_NONE;
 
     switch (cmd)
     {
         case CMD_SET_PRICE:
         {
+            dbg_last_action = DBG_ACT_SET_PRICE;
             uint16_t price = (uint16_t)((rx4[1] << 8) | rx4[2]);
             app_set_price(price);
 
@@ -279,12 +327,14 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
         case CMD_SET_RGB:
         {
+            dbg_last_action = DBG_ACT_SET_RGB;
             app_set_rgb(rx4[1], rx4[2], rx4[3]);
 
         } break;
 
         case CMD_SET_LIGHT_MODE:
         {
+            dbg_last_action = DBG_ACT_SET_LIGHT_MODE;
             // Lighting mode command payload in B1
             // 0   -> keep current color (no change)
             // 255 -> green for 500 ms, then restore previous/base color
@@ -295,6 +345,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
         case CMD_GET_TEMP:
         {
+            dbg_last_action = DBG_ACT_GET_TEMP;
             // Reply with temperature * 100 in D1:D2 (int16, big-endian)
             float t = temp_read_c();
             int16_t t100 = (int16_t)(t * 100.0f);
@@ -303,13 +354,16 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
         case CMD_GET_ALL:
         {
+            dbg_last_action = DBG_ACT_GET_ALL;
             send_reply_frame(REPLY_ALL_DATA, app_get_price());
         } break;
 
         default:
         {
-            // fixed 4-byte reply, marker 0xFFFF means unsupported request
-            send_reply_frame(REPLY_ALL_DATA, 0xFFFFU);
+            dbg_last_action = DBG_ACT_UNKNOWN;
+
+            // Accept any unknown 4-byte frame silently.
+            // Intentionally do not send an error reply.
         } break;
     }
 
@@ -339,7 +393,9 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 
     dbg_err_cplt++;
     i2c_note_activity();
-    i2c_error_flags |= HAL_I2C_GetError(hi2c);
+    dbg_last_hal_error = HAL_I2C_GetError(hi2c);
+    dbg_last_isr = hi2c->Instance->ISR;
+    i2c_error_flags |= dbg_last_hal_error;
     tx_busy = 0;
     tx_pending = 0;
     tx_len  = 0;

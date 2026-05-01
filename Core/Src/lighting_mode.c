@@ -179,7 +179,7 @@ void lighting_mode_set(uint8_t modeVal)
         return;
     }
 
-    // mode 255: green 500 ms, then back to previous/base color
+    // mode 255: green 1000 ms, then back to previous/base color
     if (modeVal == 0xFFU) {
         s_saved_state = s_state;
         s_state.active = 1;
@@ -212,7 +212,7 @@ void lighting_mode_task(void)
     const uint32_t now = HAL_GetTick();
 
     if (s_state.mode == 0xFFU) {
-        if ((now - s_state.last_tick) >= 500U) {
+        if ((now - s_state.last_tick) >= 1000U) {
             restore_saved_mode_after_flash();
         }
         return;
