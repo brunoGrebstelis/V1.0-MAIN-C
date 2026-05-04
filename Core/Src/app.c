@@ -1,4 +1,5 @@
 #include "app.h"
+#include "main.h"
 #include "display.h"
 #include "rgb.h"
 #include "i2c_slave.h"
@@ -6,11 +7,14 @@
 #include "lighting_mode.h"
 #include "nv_store.h"
 
+extern IWDG_HandleTypeDef hiwdg;
+
 #define APP_DEFAULT_PRICE        2026U
 #define APP_DEFAULT_BASE_R       150U
 #define APP_DEFAULT_BASE_G       150U
 #define APP_DEFAULT_BASE_B       150U
 #define APP_DEFAULT_LIGHT_MODE   0U
+#define APP_WDG_REFRESH_PERIOD_MS 1200U
 
 // Shared state updated by protocol / I2C commands
 static const uint8_t g_locker_id = 5;
@@ -139,4 +143,17 @@ void app_loop(void)
 
     // 7) Optional: remove demo in production
     //rgb_demo_task();
+
+    // 8) Feed independent watchdog (IWDG)
+    // Refresh periodically so this is safe even with window mode enabled.
+    // If app_loop() stalls longer than watchdog timeout, MCU will reset.
+    {
+        static uint32_t s_last_wdg_kick_ms = 0U;
+        const uint32_t now_ms = HAL_GetTick();
+
+        if ((now_ms - s_last_wdg_kick_ms) >= APP_WDG_REFRESH_PERIOD_MS) {
+            (void)HAL_IWDG_Refresh(&hiwdg);
+            s_last_wdg_kick_ms = now_ms;
+        }
+    }
 }

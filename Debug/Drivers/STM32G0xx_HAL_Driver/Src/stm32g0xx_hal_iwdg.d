@@ -1,5 +1,5 @@
-Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_hal_tim_ex.o: \
- ../Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_hal_tim_ex.c \
+Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_hal_iwdg.o: \
+ ../Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_hal_iwdg.c \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal.h \
  ../Core/Inc/stm32g0xx_hal_conf.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_rcc.h \

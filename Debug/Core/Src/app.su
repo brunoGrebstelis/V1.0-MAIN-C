@@ -1,8 +1,8 @@
-../Core/Src/app.c:23:13:app_request_persist	16	static
-../Core/Src/app.c:36:9:app_get_locker_id	0	static
-../Core/Src/app.c:37:10:app_get_price	0	static
-../Core/Src/app.c:39:6:app_set_price	8	static
-../Core/Src/app.c:49:6:app_set_rgb	16	static
-../Core/Src/app.c:62:6:app_set_light_mode	8	static
-../Core/Src/app.c:73:6:app_init	40	static
-../Core/Src/app.c:110:6:app_loop	8	static
+../Core/Src/app.c:27:13:app_request_persist	16	static
+../Core/Src/app.c:40:9:app_get_locker_id	0	static
+../Core/Src/app.c:41:10:app_get_price	0	static
+../Core/Src/app.c:43:6:app_set_price	8	static
+../Core/Src/app.c:53:6:app_set_rgb	16	static
+../Core/Src/app.c:66:6:app_set_light_mode	8	static
+../Core/Src/app.c:77:6:app_init	40	static
+../Core/Src/app.c:114:6:app_loop	16	static
