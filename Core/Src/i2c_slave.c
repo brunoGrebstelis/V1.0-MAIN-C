@@ -442,6 +442,21 @@ uint32_t i2c_slave_take_error_flags(void)
     return flags;
 }
 
+uint8_t i2c_slave_is_quiet(uint32_t min_quiet_ms)
+{
+    const uint32_t now = HAL_GetTick();
+
+    if (tx_busy || i2c_recovery_requested) {
+        return 0U;
+    }
+
+    if ((hi2c1.Instance->ISR & I2C_FLAG_BUSY) != 0U) {
+        return 0U;
+    }
+
+    return ((now - i2c_last_activity_ms) >= min_quiet_ms) ? 1U : 0U;
+}
+
 static void send_reply_frame(uint8_t reply_cmd, uint16_t data16)
 {
     dbg_last_reply_cmd = reply_cmd;

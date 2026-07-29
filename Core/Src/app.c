@@ -18,6 +18,7 @@ extern IWDG_HandleTypeDef hiwdg;
 #define APP_WDG_REFRESH_PERIOD_MS 1200U
 #define APP_TEMP_SAMPLE_PERIOD_MS 1000U
 #define APP_TEMP_AVG_SAMPLE_COUNT 30U
+#define APP_NV_SAVE_I2C_QUIET_MS 2000U
 
 // Shared state updated by protocol / I2C commands
 static const uint8_t g_locker_id = 10;
@@ -31,19 +32,6 @@ static int16_t g_temp_samples[APP_TEMP_AVG_SAMPLE_COUNT] = {0};
 static int32_t g_temp_sample_sum = 0;
 static uint8_t g_temp_sample_index = 0;
 static uint8_t g_temp_sample_count = 0;
-
-static int16_t app_temp_to_t100(float temp_c)
-{
-    int32_t t100 = (int32_t)(temp_c * 100.0f);
-
-    if (t100 < -4000L) {
-        t100 = -4000L;
-    } else if (t100 > 12500L) {
-        t100 = 12500L;
-    }
-
-    return (int16_t)t100;
-}
 
 static void app_request_persist(void)
 {
@@ -75,7 +63,7 @@ static void app_temp_task(void)
 
     s_has_sample = 1U;
     s_last_sample_ms = now_ms;
-    sample_t100 = app_temp_to_t100(temp_read_c());
+    sample_t100 = temp_read_t100();
 
     if (g_temp_sample_count < APP_TEMP_AVG_SAMPLE_COUNT) {
         g_temp_samples[g_temp_sample_index] = sample_t100;
@@ -109,23 +97,40 @@ void app_set_price(uint16_t p)
 
 void app_set_rgb(uint8_t r, uint8_t g, uint8_t b)
 {
+    uint8_t persist_needed = 0U;
+
+    if (g_light_mode != 0U) {
+        g_light_mode = 0U;
+        persist_needed = 1U;
+    }
+
+    lighting_mode_set(0U);
+
     if (g_base_r != r || g_base_g != g || g_base_b != b) {
         g_base_r = r;
         g_base_g = g;
         g_base_b = b;
-        app_request_persist();
+        persist_needed = 1U;
     }
 
     rgb_set(r, g, b);
     lighting_mode_set_base_color(r, g, b);
+
+    if (persist_needed) {
+        app_request_persist();
+    }
 }
 
 void app_set_light_mode(uint8_t modeVal)
 {
     run_light_show(modeVal);
 
-    // mode 0xFF is temporary flash mode: do not persist it
-    if (modeVal != 0xFFU && g_light_mode != modeVal) {
+    // Temporary flash modes are not persisted.
+    if (modeVal >= 0xFEU) {
+        return;
+    }
+
+    if (g_light_mode != modeVal) {
         g_light_mode = modeVal;
         app_request_persist();
     }
@@ -173,7 +178,10 @@ void app_loop(void)
     // 1) Keep display refreshing (non-blocking multiplex)
     display_task();
 
-    // 2) Update display value if changed
+    // 2) Apply received I2C commands before slower background work.
+    i2c_slave_watchdog_task();
+
+    // 3) Update display value if changed
     static uint16_t last_price = 0xFFFF;
     uint16_t p = g_price;
     if (p != last_price) {
@@ -181,25 +189,19 @@ void app_loop(void)
         display_set_number(p);
     }
 
-    // 3) Run non-blocking lighting effects state machine
+    // 4) Run non-blocking lighting effects state machine
     lighting_mode_task();
 
-    // 4) Keep cached temperature ready for fast I2C replies
+    // 5) Keep cached temperature ready for fast I2C replies
     app_temp_task();
 
-    // 5) Persist pending state updates (outside IRQ context)
-    nv_store_task();
-
-    // 6) Keep I2C slave resilient to malformed traffic / bus glitches
-    i2c_slave_watchdog_task();
-
-    // 7) Centralized I2C error handling/reporting (non-IRQ context)
-    {
-        const uint32_t i2c_err = i2c_slave_take_error_flags();
-        if (i2c_err != 0U) {
-            terminal_printf("I2C error flags: 0x%08lX\r\n", (unsigned long)i2c_err);
-        }
+    // 6) Persist pending state updates only when I2C has been quiet.
+    if (i2c_slave_is_quiet(APP_NV_SAVE_I2C_QUIET_MS)) {
+        nv_store_task();
     }
+
+    // 7) Clear latched I2C error flags in non-IRQ context.
+    (void)i2c_slave_take_error_flags();
 
     // 8) Optional: remove demo in production
     //rgb_demo_task();

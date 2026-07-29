@@ -3,10 +3,11 @@
 ../Core/Src/i2c_slave.c:264:13:arm_rx	2
 ../Core/Src/i2c_slave.c:279:6:i2c_slave_init	1
 ../Core/Src/i2c_slave.c:310:6:i2c_slave_send_reply	7
-../Core/Src/i2c_slave.c:445:13:send_reply_frame	1
+../Core/Src/i2c_slave.c:460:13:send_reply_frame	1
 ../Core/Src/i2c_slave.c:387:6:i2c_slave_debug_task	3
 ../Core/Src/i2c_slave.c:425:6:i2c_slave_watchdog_task	34
 ../Core/Src/i2c_slave.c:438:10:i2c_slave_take_error_flags	1
-../Core/Src/i2c_slave.c:463:6:HAL_I2C_SlaveRxCpltCallback	8
-../Core/Src/i2c_slave.c:553:6:HAL_I2C_SlaveTxCpltCallback	3
-../Core/Src/i2c_slave.c:568:6:HAL_I2C_ErrorCallback	3
+../Core/Src/i2c_slave.c:445:9:i2c_slave_is_quiet	4
+../Core/Src/i2c_slave.c:478:6:HAL_I2C_SlaveRxCpltCallback	8
+../Core/Src/i2c_slave.c:568:6:HAL_I2C_SlaveTxCpltCallback	3
+../Core/Src/i2c_slave.c:583:6:HAL_I2C_ErrorCallback	3

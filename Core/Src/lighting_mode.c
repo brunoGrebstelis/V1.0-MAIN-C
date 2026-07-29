@@ -135,7 +135,7 @@ static void stop_show_and_restore(void)
 
 static void restore_saved_mode_after_flash(void)
 {
-    if (s_saved_state.active && s_saved_state.mode != 0xFFU) {
+    if (s_saved_state.active && s_saved_state.mode != 0xFFU && s_saved_state.mode != 0xFEU) {
         s_state = s_saved_state;
         s_state.last_tick = HAL_GetTick();
     } else {
@@ -183,13 +183,29 @@ void lighting_mode_set(uint8_t modeVal)
 
     // mode 255: green 1000 ms, then back to previous/base color
     if (modeVal == 0xFFU) {
-        s_saved_state = s_state;
+        if (!(s_state.active && s_state.mode == 0xFFU)) {
+            s_saved_state = s_state;
+        }
         s_state.active = 1;
         s_state.mode = 0xFFU;
         s_state.phase = 0;
         s_state.step = 0;
         s_state.last_tick = HAL_GetTick();
         rgb_set(0, 255, 0);
+        return;
+    }
+
+    // mode 254: red 370 ms, then back to previous/base color
+    if (modeVal == 0xFEU) {
+        if (!(s_state.active && s_state.mode == 0xFEU)) {
+            s_saved_state = s_state;
+        }
+        s_state.active = 1;
+        s_state.mode = 0xFEU;
+        s_state.phase = 0;
+        s_state.step = 0;
+        s_state.last_tick = HAL_GetTick();
+        rgb_set(255, 0, 0);
         return;
     }
 
@@ -215,6 +231,13 @@ void lighting_mode_task(void)
 
     if (s_state.mode == 0xFFU) {
         if ((now - s_state.last_tick) >= 1000U) {
+            restore_saved_mode_after_flash();
+        }
+        return;
+    }
+
+    if (s_state.mode == 0xFEU) {
+        if ((now - s_state.last_tick) >= 370U) {
             restore_saved_mode_after_flash();
         }
         return;

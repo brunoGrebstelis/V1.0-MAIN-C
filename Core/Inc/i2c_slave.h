@@ -20,4 +20,7 @@ void i2c_slave_watchdog_task(void);
 // Retrieve and clear accumulated I2C error flags (bitmask of HAL_I2C_ERROR_* values)
 uint32_t i2c_slave_take_error_flags(void);
 
+// True when no I2C transaction/recovery has happened for at least min_quiet_ms.
+uint8_t i2c_slave_is_quiet(uint32_t min_quiet_ms);
+
 #endif
