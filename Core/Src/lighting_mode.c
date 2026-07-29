@@ -36,6 +36,8 @@ static rgb_color_t s_palette[6] = {
 
 #define PSY_FADE_STEP_MS   20U
 #define PSY_FADE_STEPS     90U
+#define SOLID_DISCO_STEP_MS 40U
+#define SOLID_DISCO_STEPS   50U
 
 static uint8_t clamp_u8(int16_t v)
 {
@@ -220,22 +222,22 @@ void lighting_mode_task(void)
 
     switch (s_state.mode)
     {
-        case 1: // pink <-> red style (locker adjusted)
+        case 1: // V-day checkerboard: odd/even groups swap colors every second
         {
             if ((now - s_state.last_tick) < 1000U) return;
             s_state.last_tick = now;
 
             const uint8_t locker = app_get_locker_id();
-            const uint8_t pink_g = (uint8_t)(40U + (locker % 4U) * 10U);   // 40..70
-            const uint8_t pink_b = (uint8_t)(90U + (locker % 5U) * 12U);   // 90..138
+            const uint8_t show_pink =
+                (uint8_t)(((locker & 0x01U) != 0U) ^ (s_state.phase != 0U));
 
-            if (s_state.phase == 0U) {
-                rgb_set(255, pink_g, pink_b);
-                s_state.phase = 1U;
+            if (show_pink != 0U) {
+                rgb_set(255, 35, 110);
             } else {
                 rgb_set(255, 0, 0);
-                s_state.phase = 0U;
             }
+
+            s_state.phase ^= 1U;
         } break;
 
         case 2: // disco palette with locker-based order/range
@@ -306,15 +308,39 @@ void lighting_mode_task(void)
             }
         } break;
 
-        case 5: // solid disco (locker-based order/range)
+        case 5: // coordinated complementary-color breathing
         {
-            if ((now - s_state.last_tick) < 300U) return;
+            static const rgb_color_t color_pairs[3][2] = {
+                {{255,   0, 180}, {  0, 220, 255}}, // magenta / cyan
+                {{ 30,  70, 255}, {255, 110,   0}}, // blue / orange
+                {{  0, 255,  70}, {180,   0, 255}}  // green / violet
+            };
+
+            if ((now - s_state.last_tick) < SOLID_DISCO_STEP_MS) return;
             s_state.last_tick = now;
 
-            rgb_color_t c = locker_palette_color(s_state.step);
-            c = shift_color(c, -20); // slightly deeper tones vs mode 2
+            const uint8_t locker = app_get_locker_id();
+            const uint8_t color_side = (uint8_t)((locker + s_state.phase) & 0x01U);
+            const uint8_t pair = (uint8_t)(s_state.phase % 3U);
+
+            // Triangle-wave brightness: 55 -> 255 -> 55. Odd/even lockers use
+            // opposite colors, producing a synchronized pattern across the bank.
+            const uint8_t half = (uint8_t)(SOLID_DISCO_STEPS / 2U);
+            const uint8_t ramp = (s_state.step <= half)
+                               ? s_state.step
+                               : (uint8_t)(SOLID_DISCO_STEPS - s_state.step);
+            const uint8_t brightness = (uint8_t)(55U +
+                ((uint16_t)ramp * 200U) / half);
+
+            rgb_color_t c = scale_color(color_pairs[pair][color_side], brightness);
             rgb_set(c.r, c.g, c.b);
-            s_state.step = (uint8_t)((s_state.step + 1U) % 6U);
+
+            if (s_state.step >= SOLID_DISCO_STEPS) {
+                s_state.step = 0U;
+                s_state.phase = (uint8_t)((s_state.phase + 1U) % 6U);
+            } else {
+                s_state.step++;
+            }
         } break;
 
         default:

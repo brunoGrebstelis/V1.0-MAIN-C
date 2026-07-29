@@ -8,6 +8,8 @@
 #define NV_MAGIC               0x4C4B5231UL  // "LKR1"
 #define NV_PAGE_INDEX          (FLASH_PAGE_NB - 1U)
 #define NV_PAGE_ADDR           (FLASH_BASE + (NV_PAGE_INDEX * FLASH_PAGE_SIZE))
+#define NV_SAVE_DEBOUNCE_MS    5000U
+#define NV_SAVE_RETRY_MS       1000U
 
 typedef struct {
     uint32_t magic;
@@ -24,6 +26,7 @@ typedef struct {
 #define NV_RECORD_COUNT        (FLASH_PAGE_SIZE / (uint32_t)sizeof(nv_record_t))
 
 static volatile uint8_t s_dirty = 0U;
+static volatile uint32_t s_save_due_ms = 0U;
 static nv_store_state_t s_pending_state = {0};
 static uint16_t s_next_seq = 0U;
 
@@ -119,12 +122,17 @@ static HAL_StatusTypeDef nv_program_record(uint32_t slot_index, const nv_record_
     return HAL_OK;
 }
 
-static uint8_t nv_take_snapshot_if_dirty(nv_store_state_t *out)
+static uint8_t nv_take_snapshot_if_dirty(nv_store_state_t *out, uint32_t now_ms)
 {
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
 
     if (s_dirty == 0U) {
+        __set_PRIMASK(primask);
+        return 0U;
+    }
+
+    if ((int32_t)(now_ms - s_save_due_ms) < 0) {
         __set_PRIMASK(primask);
         return 0U;
     }
@@ -139,6 +147,7 @@ static uint8_t nv_take_snapshot_if_dirty(nv_store_state_t *out)
 void nv_store_init(void)
 {
     s_dirty = 0U;
+    s_save_due_ms = 0U;
     s_next_seq = 0U;
 }
 
@@ -188,14 +197,26 @@ void nv_store_request_save(const nv_store_state_t *state)
     __disable_irq();
     s_pending_state = *state;
     s_dirty = 1U;
+    s_save_due_ms = HAL_GetTick() + NV_SAVE_DEBOUNCE_MS;
+    __set_PRIMASK(primask);
+}
+
+static void nv_store_request_retry(const nv_store_state_t *state)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    s_pending_state = *state;
+    s_dirty = 1U;
+    s_save_due_ms = HAL_GetTick() + NV_SAVE_RETRY_MS;
     __set_PRIMASK(primask);
 }
 
 void nv_store_task(void)
 {
     nv_store_state_t snapshot = {0};
+    const uint32_t now_ms = HAL_GetTick();
 
-    if (!nv_take_snapshot_if_dirty(&snapshot)) {
+    if (!nv_take_snapshot_if_dirty(&snapshot, now_ms)) {
         return;
     }
 
@@ -229,7 +250,7 @@ void nv_store_task(void)
     if (st == HAL_OK) {
         s_next_seq = (uint16_t)(s_next_seq + 1U);
     } else {
-        nv_store_request_save(&snapshot);
+        nv_store_request_retry(&snapshot);
     }
 }
 

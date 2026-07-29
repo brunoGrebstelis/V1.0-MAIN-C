@@ -11,5 +11,6 @@ void app_set_price(uint16_t p);
 void app_set_rgb(uint8_t r, uint8_t g, uint8_t b);
 void app_set_light_mode(uint8_t modeVal);
 uint16_t app_get_price(void);
+int16_t app_get_temp100(void);
 
 #endif

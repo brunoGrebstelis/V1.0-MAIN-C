@@ -39,7 +39,7 @@ Core/Src/app.o: ../Core/Src/app.c ../Core/Inc/app.h ../Core/Inc/main.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_uart_ex.h \
  ../Core/Inc/display.h ../Core/Inc/rgb.h ../Core/Inc/main.h \
  ../Core/Inc/i2c_slave.h ../Core/Inc/terminal.h \
- ../Core/Inc/lighting_mode.h ../Core/Inc/nv_store.h
+ ../Core/Inc/lighting_mode.h ../Core/Inc/nv_store.h ../Core/Inc/temp.h
 ../Core/Inc/app.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal.h:
@@ -87,3 +87,4 @@ Core/Src/app.o: ../Core/Src/app.c ../Core/Inc/app.h ../Core/Inc/main.h \
 ../Core/Inc/terminal.h:
 ../Core/Inc/lighting_mode.h:
 ../Core/Inc/nv_store.h:
+../Core/Inc/temp.h:

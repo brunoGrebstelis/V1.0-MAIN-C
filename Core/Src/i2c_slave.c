@@ -1,7 +1,6 @@
 #include "i2c_slave.h"
 
 #include "main.h"
-#include "temp.h"
 #include "app.h"
 #include "terminal.h"
 
@@ -29,10 +28,27 @@ static volatile uint8_t tx_len = 0;
 static volatile uint8_t tx_busy = 0;
 static volatile uint8_t rx_armed = 0;
 static volatile uint8_t tx_pending = 0;
+static volatile uint32_t tx_started_ms = 0;
+
+static volatile uint8_t pending_price_valid = 0;
+static volatile uint16_t pending_price = 0;
+static volatile uint8_t pending_rgb_valid = 0;
+static volatile uint8_t pending_rgb_r = 0;
+static volatile uint8_t pending_rgb_g = 0;
+static volatile uint8_t pending_rgb_b = 0;
+static volatile uint8_t pending_mode_valid = 0;
+static volatile uint8_t pending_mode = 0;
 
 // Time tracking for reliability watchdog
 static volatile uint32_t i2c_last_activity_ms = 0;
+static volatile uint32_t i2c_last_valid_frame_ms = 0;
 static volatile uint32_t i2c_last_recover_ms = 0;
+static volatile uint32_t i2c_bus_busy_since_ms = 0;
+static volatile uint32_t i2c_line_low_since_ms = 0;
+static volatile uint32_t i2c_recover_window_start_ms = 0;
+static volatile uint8_t i2c_recover_window_count = 0;
+static volatile uint8_t i2c_recovery_requested = 0;
+static volatile uint8_t i2c_recovery_reason = 0;
 
 // Latching error info
 static volatile uint32_t i2c_error_flags = 0;
@@ -58,6 +74,8 @@ static volatile uint16_t dbg_last_reply_data = 0;
 static volatile uint8_t  dbg_last_reply_valid = 0;
 static volatile uint32_t dbg_last_hal_error = 0;
 static volatile uint32_t dbg_last_isr = 0;
+static volatile uint8_t  dbg_last_recover_reason = 0;
+static volatile uint32_t dbg_no_valid_reset_armed = 0;
 
 #define DBG_ACT_NONE            0U
 #define DBG_ACT_SET_PRICE       1U
@@ -67,9 +85,24 @@ static volatile uint32_t dbg_last_isr = 0;
 #define DBG_ACT_GET_ALL         5U
 #define DBG_ACT_UNKNOWN         6U
 
-#define I2C_RECOVER_COOLDOWN_MS      20U
-#define I2C_STUCK_TIMEOUT_MS         40U
-#define I2C_RECOVER_MAX_TRIES        2U
+#define I2C_RECOVER_COOLDOWN_MS           20U
+#define I2C_STUCK_TIMEOUT_MS              50U
+#define I2C_LINE_STUCK_LOW_MS             50U
+#define I2C_BUS_BUSY_STUCK_MS             50U
+#define I2C_TX_STUCK_TIMEOUT_MS           50U
+#define I2C_NO_VALID_FRAME_RECOVER_MS 360000U
+#define I2C_NO_VALID_FRAME_RESET_MS   720000U
+#define I2C_RECOVER_BURST_WINDOW_MS    10000U
+#define I2C_RECOVER_BURST_RESET_LIMIT      6U
+#define I2C_RECOVER_MAX_TRIES              2U
+
+#define I2C_RECOVER_REASON_HAL_STATE      1U
+#define I2C_RECOVER_REASON_HAL_FLAGS      2U
+#define I2C_RECOVER_REASON_BUS_BUSY       3U
+#define I2C_RECOVER_REASON_LINE_LOW       4U
+#define I2C_RECOVER_REASON_TX_STUCK       5U
+#define I2C_RECOVER_REASON_ARM_FAILED     6U
+#define I2C_RECOVER_REASON_NO_VALID_FRAME 7U
 
 static void arm_rx(I2C_HandleTypeDef *hi2c);
 
@@ -78,18 +111,48 @@ static void i2c_note_activity(void)
     i2c_last_activity_ms = HAL_GetTick();
 }
 
+static void i2c_note_valid_frame(void)
+{
+    const uint32_t now = HAL_GetTick();
+    i2c_last_activity_ms = now;
+    i2c_last_valid_frame_ms = now;
+    dbg_no_valid_reset_armed = 0U;
+}
+
+static void i2c_request_recovery(uint8_t reason)
+{
+    i2c_recovery_requested = 1U;
+    i2c_recovery_reason = reason;
+}
+
+static void i2c_track_recovery_burst(uint32_t now)
+{
+    if ((now - i2c_recover_window_start_ms) > I2C_RECOVER_BURST_WINDOW_MS) {
+        i2c_recover_window_start_ms = now;
+        i2c_recover_window_count = 0U;
+    }
+
+    if (i2c_recover_window_count < 255U) {
+        i2c_recover_window_count++;
+    }
+
+    if (i2c_recover_window_count >= I2C_RECOVER_BURST_RESET_LIMIT) {
+        NVIC_SystemReset();
+    }
+}
+
 static void i2c_force_ready(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c == NULL) {
         return;
     }
 
-    // Abort possible pending transfer state in HAL
-    (void)HAL_I2C_Master_Abort_IT(hi2c, 0);
+    HAL_NVIC_DisableIRQ(I2C1_IRQn);
 
     // Reset peripheral state machine and clear flags
     (void)HAL_I2C_DeInit(hi2c);
     (void)HAL_I2C_Init(hi2c);
+    HAL_NVIC_DisableIRQ(I2C1_IRQn);
     (void)HAL_I2CEx_ConfigAnalogFilter(hi2c, I2C_ANALOGFILTER_ENABLE);
     (void)HAL_I2CEx_ConfigDigitalFilter(hi2c, 0);
 
@@ -103,48 +166,97 @@ static void i2c_force_ready(I2C_HandleTypeDef *hi2c)
     tx_pending = 0;
     tx_len = 0;
     rx_armed = 0;
+    tx_started_ms = 0;
+    i2c_bus_busy_since_ms = 0;
+    i2c_line_low_since_ms = 0;
 
     dbg_recover++;
     i2c_recover_count++;
     i2c_note_activity();
 
+    HAL_NVIC_ClearPendingIRQ(I2C1_IRQn);
+    HAL_NVIC_EnableIRQ(I2C1_IRQn);
+
     arm_rx(hi2c);
 }
 
-static void i2c_try_recover_if_stuck(I2C_HandleTypeDef *hi2c)
+static void i2c_perform_recovery_if_requested(I2C_HandleTypeDef *hi2c)
 {
     const uint32_t now = HAL_GetTick();
-    const uint32_t dt_since_activity = now - i2c_last_activity_ms;
     const uint32_t dt_since_recover = now - i2c_last_recover_ms;
+
+    if (!i2c_recovery_requested) {
+        return;
+    }
 
     if (dt_since_recover < I2C_RECOVER_COOLDOWN_MS) {
         return;
     }
 
-    if (dt_since_activity < I2C_STUCK_TIMEOUT_MS) {
-        return;
-    }
-
-    uint32_t isr = hi2c->Instance->ISR;
-    uint8_t stuck = 0;
-
-    if ((hi2c->State != HAL_I2C_STATE_READY) && !rx_armed) {
-        stuck = 1;
-    }
-
-    if (isr & (I2C_FLAG_BERR | I2C_FLAG_ARLO | I2C_FLAG_OVR)) {
-        stuck = 1;
-    }
-
-    if (!stuck) {
-        return;
-    }
-
+    i2c_recovery_requested = 0U;
     i2c_last_recover_ms = now;
+    dbg_last_recover_reason = i2c_recovery_reason;
+    i2c_track_recovery_burst(now);
+
     for (uint8_t i = 0; i < I2C_RECOVER_MAX_TRIES; i++) {
         i2c_force_ready(hi2c);
-        if ((hi2c->State == HAL_I2C_STATE_READY) || rx_armed) {
+        if (rx_armed) {
             break;
+        }
+    }
+}
+
+static void i2c_monitor_for_stuck_bus(I2C_HandleTypeDef *hi2c)
+{
+    const uint32_t now = HAL_GetTick();
+    const uint32_t isr = hi2c->Instance->ISR;
+    const GPIO_PinState scl = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8);
+    const GPIO_PinState sda = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7);
+
+    if (isr & (I2C_FLAG_BERR | I2C_FLAG_ARLO | I2C_FLAG_OVR)) {
+        i2c_request_recovery(I2C_RECOVER_REASON_HAL_FLAGS);
+        return;
+    }
+
+    if ((hi2c->State != HAL_I2C_STATE_READY) && !rx_armed && !tx_busy) {
+        if ((now - i2c_last_activity_ms) >= I2C_STUCK_TIMEOUT_MS) {
+            i2c_request_recovery(I2C_RECOVER_REASON_HAL_STATE);
+        }
+        return;
+    }
+
+    if (tx_busy && ((now - tx_started_ms) >= I2C_TX_STUCK_TIMEOUT_MS)) {
+        i2c_request_recovery(I2C_RECOVER_REASON_TX_STUCK);
+        return;
+    }
+
+    if ((isr & I2C_FLAG_BUSY) != 0U) {
+        if (i2c_bus_busy_since_ms == 0U) {
+            i2c_bus_busy_since_ms = now;
+        } else if ((now - i2c_bus_busy_since_ms) >= I2C_BUS_BUSY_STUCK_MS) {
+            i2c_request_recovery(I2C_RECOVER_REASON_BUS_BUSY);
+        }
+    } else {
+        i2c_bus_busy_since_ms = 0U;
+    }
+
+    if ((scl == GPIO_PIN_RESET) || (sda == GPIO_PIN_RESET)) {
+        if (i2c_line_low_since_ms == 0U) {
+            i2c_line_low_since_ms = now;
+        } else if ((now - i2c_line_low_since_ms) >= I2C_LINE_STUCK_LOW_MS) {
+            i2c_request_recovery(I2C_RECOVER_REASON_LINE_LOW);
+        }
+    } else {
+        i2c_line_low_since_ms = 0U;
+    }
+
+    const uint32_t valid_age = now - i2c_last_valid_frame_ms;
+    if (valid_age >= I2C_NO_VALID_FRAME_RESET_MS) {
+        NVIC_SystemReset();
+    } else if (valid_age >= I2C_NO_VALID_FRAME_RECOVER_MS) {
+        if (!dbg_no_valid_reset_armed) {
+            dbg_no_valid_reset_armed = 1U;
+            i2c_request_recovery(I2C_RECOVER_REASON_NO_VALID_FRAME);
         }
     }
 }
@@ -159,8 +271,8 @@ static void arm_rx(I2C_HandleTypeDef *hi2c)
     } else {
         dbg_arm_rx_busy++;
 
-        // If RX re-arm fails repeatedly, force recovery to keep callbacks alive
-        i2c_try_recover_if_stuck(hi2c);
+        // If RX re-arm fails, recover from main-loop context.
+        i2c_request_recovery(I2C_RECOVER_REASON_ARM_FAILED);
     }
 }
 
@@ -173,9 +285,20 @@ void i2c_slave_init(void)
     tx_pending = 0;
     tx_busy = 0;
     tx_len  = 0;
+    tx_started_ms = 0;
+    pending_price_valid = 0;
+    pending_rgb_valid = 0;
+    pending_mode_valid = 0;
 
     i2c_last_activity_ms = HAL_GetTick();
+    i2c_last_valid_frame_ms = i2c_last_activity_ms;
     i2c_last_recover_ms = 0;
+    i2c_bus_busy_since_ms = 0;
+    i2c_line_low_since_ms = 0;
+    i2c_recover_window_start_ms = i2c_last_activity_ms;
+    i2c_recover_window_count = 0;
+    i2c_recovery_requested = 0;
+    i2c_recovery_reason = 0;
     i2c_error_flags = 0;
     i2c_recover_count = 0;
 
@@ -202,14 +325,62 @@ void i2c_slave_send_reply(const uint8_t *data, uint8_t len)
         tx_busy = 1;
         tx_pending = 1;
         rx_armed = 0;
+        tx_started_ms = HAL_GetTick();
         dbg_tx_start_ok++;
         i2c_note_activity();
     } else {
         tx_busy = 0;
         tx_pending = 0;
+        tx_started_ms = 0;
         dbg_tx_start_busy++;
-        i2c_try_recover_if_stuck(&hi2c1);
-        arm_rx(&hi2c1);
+        i2c_request_recovery(I2C_RECOVER_REASON_TX_STUCK);
+    }
+}
+
+static void i2c_apply_pending_commands(void)
+{
+    uint8_t have_price = 0U;
+    uint16_t price = 0U;
+    uint8_t have_rgb = 0U;
+    uint8_t r = 0U;
+    uint8_t g = 0U;
+    uint8_t b = 0U;
+    uint8_t have_mode = 0U;
+    uint8_t mode = 0U;
+    uint32_t primask = __get_PRIMASK();
+
+    __disable_irq();
+    if (pending_price_valid) {
+        have_price = 1U;
+        price = pending_price;
+        pending_price_valid = 0U;
+    }
+
+    if (pending_rgb_valid) {
+        have_rgb = 1U;
+        r = pending_rgb_r;
+        g = pending_rgb_g;
+        b = pending_rgb_b;
+        pending_rgb_valid = 0U;
+    }
+
+    if (pending_mode_valid) {
+        have_mode = 1U;
+        mode = pending_mode;
+        pending_mode_valid = 0U;
+    }
+    __set_PRIMASK(primask);
+
+    if (have_price) {
+        app_set_price(price);
+    }
+
+    if (have_rgb) {
+        app_set_rgb(r, g, b);
+    }
+
+    if (have_mode) {
+        app_set_light_mode(mode);
     }
 }
 
@@ -228,7 +399,7 @@ void i2c_slave_debug_task(void)
 
     uint32_t now = HAL_GetTick();
 
-    terminal_printf("I2C dbg rx=%lu tx=%lu err=%lu arm_ok=%lu arm_busy=%lu tx_ok=%lu tx_busy=%lu last_cmd=0x%02X frame=[%02X %02X %02X %02X] act=%u reply_valid=%u reply=[%02X %02X %02X] rx_armed=%u tx_busy=%u\r\n",
+    terminal_printf("I2C rx=%lu tx=%lu err=%lu arm=%lu/%lu txs=%lu/%lu cmd=%02X act=%u rxA=%u txB=%u\r\n",
                     (unsigned long)dbg_rx_cplt,
                     (unsigned long)dbg_tx_cplt,
                     (unsigned long)dbg_err_cplt,
@@ -237,35 +408,31 @@ void i2c_slave_debug_task(void)
                     (unsigned long)dbg_tx_start_ok,
                     (unsigned long)dbg_tx_start_busy,
                     (unsigned int)dbg_last_cmd,
-                    (unsigned int)dbg_last_rx_b0,
-                    (unsigned int)dbg_last_rx_b1,
-                    (unsigned int)dbg_last_rx_b2,
-                    (unsigned int)dbg_last_rx_b3,
                     (unsigned int)dbg_last_action,
-                    (unsigned int)dbg_last_reply_valid,
-                    (unsigned int)dbg_last_reply_cmd,
-                    (unsigned int)(dbg_last_reply_data >> 8),
-                    (unsigned int)(dbg_last_reply_data & 0xFF),
                     (unsigned int)rx_armed,
                     (unsigned int)tx_busy);
 
-    terminal_printf("I2C state=0x%02X err=0x%08lX recov=%lu lastAct=%lu ms last_hal_err=0x%08lX isr=0x%08lX\r\n",
+    terminal_printf("I2C st=%02X rec=%lu act=%lu valid=%lu err=%08lX isr=%08lX why=%u\r\n",
                     (unsigned int)hi2c1.State,
-                    (unsigned long)i2c_error_flags,
                     (unsigned long)dbg_recover,
                     (unsigned long)(now - i2c_last_activity_ms),
+                    (unsigned long)(now - i2c_last_valid_frame_ms),
                     (unsigned long)dbg_last_hal_error,
-                    (unsigned long)dbg_last_isr);
+                    (unsigned long)dbg_last_isr,
+                    (unsigned int)dbg_last_recover_reason);
 }
 
 void i2c_slave_watchdog_task(void)
 {
+    i2c_apply_pending_commands();
+
     // keep RX callback armed whenever possible
     if (!rx_armed && !tx_busy && hi2c1.State == HAL_I2C_STATE_READY) {
         arm_rx(&hi2c1);
     }
 
-    i2c_try_recover_if_stuck(&hi2c1);
+    i2c_monitor_for_stuck_bus(&hi2c1);
+    i2c_perform_recovery_if_requested(&hi2c1);
 }
 
 uint32_t i2c_slave_take_error_flags(void)
@@ -320,15 +487,20 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         case CMD_SET_PRICE:
         {
             dbg_last_action = DBG_ACT_SET_PRICE;
-            uint16_t price = (uint16_t)((rx4[1] << 8) | rx4[2]);
-            app_set_price(price);
+            pending_price = (uint16_t)((rx4[1] << 8) | rx4[2]);
+            pending_price_valid = 1U;
+            i2c_note_valid_frame();
 
         } break;
 
         case CMD_SET_RGB:
         {
             dbg_last_action = DBG_ACT_SET_RGB;
-            app_set_rgb(rx4[1], rx4[2], rx4[3]);
+            pending_rgb_r = rx4[1];
+            pending_rgb_g = rx4[2];
+            pending_rgb_b = rx4[3];
+            pending_rgb_valid = 1U;
+            i2c_note_valid_frame();
 
         } break;
 
@@ -339,7 +511,9 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
             // 0   -> keep current color (no change)
             // 255 -> green for 500 ms, then restore previous/base color
             // else-> run selected light show mode
-            app_set_light_mode(rx4[1]);
+            pending_mode = rx4[1];
+            pending_mode_valid = 1U;
+            i2c_note_valid_frame();
 
         } break;
 
@@ -347,14 +521,15 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         {
             dbg_last_action = DBG_ACT_GET_TEMP;
             // Reply with temperature * 100 in D1:D2 (int16, big-endian)
-            float t = temp_read_c();
-            int16_t t100 = (int16_t)(t * 100.0f);
+            int16_t t100 = app_get_temp100();
+            i2c_note_valid_frame();
             send_reply_frame(REPLY_TEMP, (uint16_t)t100);
         } break;
 
         case CMD_GET_ALL:
         {
             dbg_last_action = DBG_ACT_GET_ALL;
+            i2c_note_valid_frame();
             send_reply_frame(REPLY_ALL_DATA, app_get_price());
         } break;
 
@@ -367,9 +542,11 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         } break;
     }
 
-    // Always re-arm RX for the next write command.
-    // This avoids lockup if master sends write-only commands and never reads reply bytes.
-    arm_rx(hi2c);
+    // Re-arm immediately for write-only commands. Reply commands re-arm after
+    // TX completes; if master never reads the reply, the TX timeout recovers.
+    if (!tx_busy) {
+        arm_rx(hi2c);
+    }
 }
 
 // Called when slave finished transmitting reply bytes
@@ -380,6 +557,7 @@ void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
     i2c_note_activity();
     tx_busy = 0;
     tx_pending = 0;
+    tx_started_ms = 0;
 
     if (!rx_armed) {
         arm_rx(hi2c);
@@ -399,13 +577,14 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
     tx_busy = 0;
     tx_pending = 0;
     tx_len  = 0;
+    tx_started_ms = 0;
     rx_armed = 0;
 
     // Fast path: try re-arm first
     arm_rx(hi2c);
 
-    // If still not armed or driver not ready, force full recovery
-    if (!rx_armed || hi2c->State != HAL_I2C_STATE_READY) {
-        i2c_force_ready(hi2c);
+    // If RX could not be re-armed, recover from main-loop context.
+    if (!rx_armed) {
+        i2c_request_recovery(I2C_RECOVER_REASON_HAL_STATE);
     }
 }

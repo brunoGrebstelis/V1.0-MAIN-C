@@ -1,5 +1,4 @@
 #include "protocol.h"
-#include "temp.h"
 #include "terminal.h"
 #include "app.h"
 
@@ -29,8 +28,7 @@ void protocol_on_frame(uint8_t cmd, const uint8_t *payload, uint8_t len)
 
         case CMD_GET_TEMP:
             if (len == 0) {
-                float t = temp_read_c();
-                int16_t t100 = (int16_t)(t * 100.0f);
+                int16_t t100 = app_get_temp100();
                 uint8_t out[2] = { (uint8_t)(t100 >> 8), (uint8_t)(t100 & 0xFF) };
                 i2c_slave_send_reply(out, 2);
             }

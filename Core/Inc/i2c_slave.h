@@ -14,6 +14,7 @@ void i2c_slave_debug_task(void);
 // Periodic reliability monitor:
 // - re-arms RX callback if it got lost
 // - force-recovers I2C peripheral after prolonged inactivity in busy/error state
+// - applies write-only commands outside interrupt context
 void i2c_slave_watchdog_task(void);
 
 // Retrieve and clear accumulated I2C error flags (bitmask of HAL_I2C_ERROR_* values)

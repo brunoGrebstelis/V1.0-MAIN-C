@@ -6,6 +6,7 @@
 #include "terminal.h"
 #include "lighting_mode.h"
 #include "nv_store.h"
+#include "temp.h"
 
 extern IWDG_HandleTypeDef hiwdg;
 
@@ -15,14 +16,34 @@ extern IWDG_HandleTypeDef hiwdg;
 #define APP_DEFAULT_BASE_B       150U
 #define APP_DEFAULT_LIGHT_MODE   0U
 #define APP_WDG_REFRESH_PERIOD_MS 1200U
+#define APP_TEMP_SAMPLE_PERIOD_MS 1000U
+#define APP_TEMP_AVG_SAMPLE_COUNT 30U
 
 // Shared state updated by protocol / I2C commands
-static const uint8_t g_locker_id = 5;
+static const uint8_t g_locker_id = 10;
 static volatile uint16_t g_price = APP_DEFAULT_PRICE;
 static volatile uint8_t g_base_r = APP_DEFAULT_BASE_R;
 static volatile uint8_t g_base_g = APP_DEFAULT_BASE_G;
 static volatile uint8_t g_base_b = APP_DEFAULT_BASE_B;
 static volatile uint8_t g_light_mode = APP_DEFAULT_LIGHT_MODE;
+static volatile int16_t g_temp100 = 2500;
+static int16_t g_temp_samples[APP_TEMP_AVG_SAMPLE_COUNT] = {0};
+static int32_t g_temp_sample_sum = 0;
+static uint8_t g_temp_sample_index = 0;
+static uint8_t g_temp_sample_count = 0;
+
+static int16_t app_temp_to_t100(float temp_c)
+{
+    int32_t t100 = (int32_t)(temp_c * 100.0f);
+
+    if (t100 < -4000L) {
+        t100 = -4000L;
+    } else if (t100 > 12500L) {
+        t100 = 12500L;
+    }
+
+    return (int16_t)t100;
+}
 
 static void app_request_persist(void)
 {
@@ -39,6 +60,42 @@ static void app_request_persist(void)
 
 uint8_t app_get_locker_id(void) { return g_locker_id; }
 uint16_t app_get_price(void) { return g_price; }
+int16_t app_get_temp100(void) { return g_temp100; }
+
+static void app_temp_task(void)
+{
+    static uint32_t s_last_sample_ms = 0U;
+    static uint8_t s_has_sample = 0U;
+    const uint32_t now_ms = HAL_GetTick();
+    int16_t sample_t100;
+
+    if (s_has_sample && ((now_ms - s_last_sample_ms) < APP_TEMP_SAMPLE_PERIOD_MS)) {
+        return;
+    }
+
+    s_has_sample = 1U;
+    s_last_sample_ms = now_ms;
+    sample_t100 = app_temp_to_t100(temp_read_c());
+
+    if (g_temp_sample_count < APP_TEMP_AVG_SAMPLE_COUNT) {
+        g_temp_samples[g_temp_sample_index] = sample_t100;
+        g_temp_sample_sum += sample_t100;
+        g_temp_sample_count++;
+    } else {
+        g_temp_sample_sum -= g_temp_samples[g_temp_sample_index];
+        g_temp_samples[g_temp_sample_index] = sample_t100;
+        g_temp_sample_sum += sample_t100;
+    }
+
+    g_temp_sample_index++;
+    if (g_temp_sample_index >= APP_TEMP_AVG_SAMPLE_COUNT) {
+        g_temp_sample_index = 0U;
+    }
+
+    if (g_temp_sample_count > 0U) {
+        g_temp100 = (int16_t)(g_temp_sample_sum / (int32_t)g_temp_sample_count);
+    }
+}
 
 void app_set_price(uint16_t p)
 {
@@ -127,13 +184,16 @@ void app_loop(void)
     // 3) Run non-blocking lighting effects state machine
     lighting_mode_task();
 
-    // 4) Persist pending state updates (outside IRQ context)
+    // 4) Keep cached temperature ready for fast I2C replies
+    app_temp_task();
+
+    // 5) Persist pending state updates (outside IRQ context)
     nv_store_task();
 
-    // 5) Keep I2C slave resilient to malformed traffic / bus glitches
+    // 6) Keep I2C slave resilient to malformed traffic / bus glitches
     i2c_slave_watchdog_task();
 
-    // 6) Centralized I2C error handling/reporting (non-IRQ context)
+    // 7) Centralized I2C error handling/reporting (non-IRQ context)
     {
         const uint32_t i2c_err = i2c_slave_take_error_flags();
         if (i2c_err != 0U) {
@@ -141,10 +201,10 @@ void app_loop(void)
         }
     }
 
-    // 7) Optional: remove demo in production
+    // 8) Optional: remove demo in production
     //rgb_demo_task();
 
-    // 8) Feed independent watchdog (IWDG)
+    // 9) Feed independent watchdog (IWDG)
     // Refresh periodically so this is safe even with window mode enabled.
     // If app_loop() stalls longer than watchdog timeout, MCU will reset.
     {
